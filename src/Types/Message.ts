@@ -215,6 +215,33 @@ export type WASendableProduct = Omit<proto.Message.ProductMessage.IProductSnapsh
 	productImage: WAMediaUpload
 }
 
+// ===== XVEON PATCH: Interactive Message Button Type =====
+export type InteractiveButton = {
+	text: string
+	id?: string
+}
+
+export type InteractiveMessageContent = {
+	body: {
+		text: string
+	}
+	footer?: {
+		text: string
+	}
+	header?: {
+		title?: string
+		subtitle?: string
+		hasMediaAttachment?: boolean
+	}
+	nativeFlowMessage: {
+		buttons: {
+			name: string
+			buttonParamsJson: string
+		}[]
+	}
+}
+// ===== END XVEON PATCH =====
+
 export type AnyRegularMessageContent = (
 	| ({
 			text: string
@@ -265,6 +292,16 @@ export type AnyRegularMessageContent = (
 	  }
 	| SharePhoneNumber
 	| RequestPhoneNumber
+	// ===== XVEON PATCH: Add interactive message to content types =====
+	| {
+			interactiveMessage: InteractiveMessageContent
+			text?: string
+			footer?: string
+			title?: string
+			buttons?: InteractiveButton[]
+			button?: InteractiveButton[]
+	  }
+	// ===== END XVEON PATCH =====
 ) &
 	ViewOnce
 

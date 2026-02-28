@@ -510,6 +510,43 @@ const processMessage = async (
 		} else {
 			logger?.warn({ creationMsgKey }, 'event creation message not found, cannot decrypt response')
 		}
+	} else if (content?.pollUpdateMessage) {
+		const creationMsgKey = content.pollUpdateMessage.pollCreationMessageKey!
+		// we need to fetch the poll creation message to get the poll enc key
+		const pollMsg = await getMessage(creationMsgKey)
+		if (pollMsg) {
+			const meIdNormalised = jidNormalizedUser(meId)
+			const pollCreatorJid = getKeyAuthor(creationMsgKey, meIdNormalised)
+			const voterJid = getKeyAuthor(message.key, meIdNormalised)
+			const pollEncKey = pollMsg.messageContextInfo?.messageSecret!
+
+			try {
+				const voteMsg = decryptPollVote(content.pollUpdateMessage.vote!, {
+					pollEncKey,
+					pollCreatorJid,
+					pollMsgId: creationMsgKey.id!,
+					voterJid
+				})
+				ev.emit('messages.update', [
+					{
+						key: creationMsgKey,
+						update: {
+							pollUpdates: [
+								{
+									pollUpdateMessageKey: message.key,
+									vote: voteMsg,
+									senderTimestampMs: (content.pollUpdateMessage.senderTimestampMs! as Long).toNumber()
+								}
+							]
+						}
+					}
+				])
+			} catch (err) {
+				logger?.warn({ err, creationMsgKey }, 'failed to decrypt poll vote')
+			}
+		} else {
+			logger?.warn({ creationMsgKey }, 'poll creation message not found, cannot decrypt update')
+		}
 	} else if (message.messageStubType) {
 		const jid = message.key?.remoteJid!
 		//let actor = whatsappID (message.participant)
@@ -612,55 +649,7 @@ const processMessage = async (
 				emitGroupRequestJoin(participant, action, method)
 				break
 		}
-	} /*  else if(content?.pollUpdateMessage) {
-		const creationMsgKey = content.pollUpdateMessage.pollCreationMessageKey!
-		// we need to fetch the poll creation message to get the poll enc key
-		// TODO: make standalone, remove getMessage reference
-		// TODO: Remove entirely
-		const pollMsg = await getMessage(creationMsgKey)
-		if(pollMsg) {
-			const meIdNormalised = jidNormalizedUser(meId)
-			const pollCreatorJid = getKeyAuthor(creationMsgKey, meIdNormalised)
-			const voterJid = getKeyAuthor(message.key, meIdNormalised)
-			const pollEncKey = pollMsg.messageContextInfo?.messageSecret!
-
-			try {
-				const voteMsg = decryptPollVote(
-					content.pollUpdateMessage.vote!,
-					{
-						pollEncKey,
-						pollCreatorJid,
-						pollMsgId: creationMsgKey.id!,
-						voterJid,
-					}
-				)
-				ev.emit('messages.update', [
-					{
-						key: creationMsgKey,
-						update: {
-							pollUpdates: [
-								{
-									pollUpdateMessageKey: message.key,
-									vote: voteMsg,
-									senderTimestampMs: (content.pollUpdateMessage.senderTimestampMs! as Long).toNumber(),
-								}
-							]
-						}
-					}
-				])
-			} catch(err) {
-				logger?.warn(
-					{ err, creationMsgKey },
-					'failed to decrypt poll vote'
-				)
-			}
-		} else {
-			logger?.warn(
-				{ creationMsgKey },
-				'poll creation message not found, cannot decrypt update'
-			)
-		}
-		} */
+	}
 
 	if (Object.keys(chat).length > 1) {
 		ev.emit('chats.update', [chat])

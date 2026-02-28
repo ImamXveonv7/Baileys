@@ -396,7 +396,14 @@ export const generateWAMessageContent = async (
 	options: MessageContentGenerationOptions
 ) => {
 	let m: WAMessageContent = {}
-	if (hasNonNullishProperty(message, 'text')) {
+	
+	// ===== XVEON PATCH: Handle interactive message (buttons) =====
+	if (hasNonNullishProperty(message, 'interactiveMessage')) {
+		m.interactiveMessage = message.interactiveMessage
+	}
+	// ===== END XVEON PATCH =====
+	
+	else if (hasNonNullishProperty(message, 'text')) {
 		const extContent = { text: message.text } as WATextMessage
 
 		let urlInfo = message.linkPreview
@@ -668,38 +675,75 @@ export const generateWAMessageFromContent = (
 	const timestamp = unixTimestampSeconds(options.timestamp)
 	const { quoted, userJid } = options
 
+	// ===== XVEON PATCH: Enhanced quoted message handling =====
 	if (quoted && !isJidNewsletter(jid)) {
-		const participant = quoted.key.fromMe
-			? userJid // TODO: Add support for LIDs
-			: quoted.participant || quoted.key.participant || quoted.key.remoteJid
+		// If quoted is a simple object with key and message, use it directly
+		if (quoted.key && quoted.message) {
+			const participant = quoted.key.fromMe
+				? userJid
+				: quoted.participant || quoted.key.participant || quoted.key.remoteJid
 
-		let quotedMsg = normalizeMessageContent(quoted.message)!
-		const msgType = getContentType(quotedMsg)!
-		// strip any redundant properties
-		quotedMsg = proto.Message.create({ [msgType]: quotedMsg[msgType] })
+			let quotedMsg = normalizeMessageContent(quoted.message)!
+			const msgType = getContentType(quotedMsg)!
+			// strip any redundant properties
+			quotedMsg = proto.Message.create({ [msgType]: quotedMsg[msgType] })
 
-		const quotedContent = quotedMsg[msgType]
-		if (typeof quotedContent === 'object' && quotedContent && 'contextInfo' in quotedContent) {
-			delete quotedContent.contextInfo
-		}
+			const quotedContent = quotedMsg[msgType]
+			if (typeof quotedContent === 'object' && quotedContent && 'contextInfo' in quotedContent) {
+				delete quotedContent.contextInfo
+			}
 
-		const contextInfo: proto.IContextInfo =
-			('contextInfo' in innerMessage[key]! && innerMessage[key]?.contextInfo) || {}
-		contextInfo.participant = jidNormalizedUser(participant!)
-		contextInfo.stanzaId = quoted.key.id
-		contextInfo.quotedMessage = quotedMsg
+			const contextInfo: proto.IContextInfo =
+				('contextInfo' in innerMessage[key]! && innerMessage[key]?.contextInfo) || {}
+			contextInfo.participant = jidNormalizedUser(participant!)
+			contextInfo.stanzaId = quoted.key.id
+			contextInfo.quotedMessage = quotedMsg
 
-		// if a participant is quoted, then it must be a group
-		// hence, remoteJid of group must also be entered
-		if (jid !== quoted.key.remoteJid) {
-			contextInfo.remoteJid = quoted.key.remoteJid
-		}
+			// if a participant is quoted, then it must be a group
+			// hence, remoteJid of group must also be entered
+			if (jid !== quoted.key.remoteJid) {
+				contextInfo.remoteJid = quoted.key.remoteJid
+			}
 
-		if (contextInfo && innerMessage[key]) {
-			/* @ts-ignore */
-			innerMessage[key].contextInfo = contextInfo
+			if (contextInfo && innerMessage[key]) {
+				/* @ts-ignore */
+				innerMessage[key].contextInfo = contextInfo
+			}
+		} else {
+			// Original logic for standard quoted messages
+			const participant = quoted.key.fromMe
+				? userJid // TODO: Add support for LIDs
+				: quoted.participant || quoted.key.participant || quoted.key.remoteJid
+
+			let quotedMsg = normalizeMessageContent(quoted.message)!
+			const msgType = getContentType(quotedMsg)!
+			// strip any redundant properties
+			quotedMsg = proto.Message.create({ [msgType]: quotedMsg[msgType] })
+
+			const quotedContent = quotedMsg[msgType]
+			if (typeof quotedContent === 'object' && quotedContent && 'contextInfo' in quotedContent) {
+				delete quotedContent.contextInfo
+			}
+
+			const contextInfo: proto.IContextInfo =
+				('contextInfo' in innerMessage[key]! && innerMessage[key]?.contextInfo) || {}
+			contextInfo.participant = jidNormalizedUser(participant!)
+			contextInfo.stanzaId = quoted.key.id
+			contextInfo.quotedMessage = quotedMsg
+
+			// if a participant is quoted, then it must be a group
+			// hence, remoteJid of group must also be entered
+			if (jid !== quoted.key.remoteJid) {
+				contextInfo.remoteJid = quoted.key.remoteJid
+			}
+
+			if (contextInfo && innerMessage[key]) {
+				/* @ts-ignore */
+				innerMessage[key].contextInfo = contextInfo
+			}
 		}
 	}
+	// ===== END XVEON PATCH =====
 
 	if (
 		// if we want to send a disappearing message
@@ -831,6 +875,15 @@ export const extractMessageContent = (content: WAMessageContent | undefined | nu
 	if (content?.templateMessage?.fourRowTemplate) {
 		return extractFromTemplateMessage(content?.templateMessage?.fourRowTemplate)
 	}
+
+	// ===== XVEON PATCH: Extract interactive message content =====
+	if (content?.interactiveMessage) {
+		const interactiveMsg = content.interactiveMessage
+		if (interactiveMsg.body?.text) {
+			return { conversation: interactiveMsg.body.text }
+		}
+	}
+	// ===== END XVEON PATCH =====
 
 	return content
 }
